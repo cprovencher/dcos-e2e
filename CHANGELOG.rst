@@ -8,6 +8,8 @@ Next
 
 - Add ``dcos-docker create-loopback-sidecar`` and ``dcos-docker destroy-loopback-sidecar`` commands to provide unformatted block devices to DC/OS.
 - Add ``dcos-docker clean`` command to clean left over artifacts.
+- Make ``wait_for_dcos_*`` single threaded.
+  This can avoid hitting errors.
 
 2018.10.17.1
 ------------

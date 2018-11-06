@@ -132,11 +132,7 @@ class Cluster(ContextDecorator):
             cluster_backend=backend,
         )
 
-    @retry(
-        exceptions=(subprocess.CalledProcessError),
-        delay=10,
-    )
-    def _wait_for_node_poststart(self) -> None:
+    def _wait_for_node_poststart(self, timeout_seconds: int) -> None:
         """
         Wait until all DC/OS node-poststart checks are healthy.
 
@@ -146,26 +142,37 @@ class Cluster(ContextDecorator):
         exists on DC/OS 1.9. ``node-poststart`` requires ``sudo`` to allow
         reading the CA certificate used by certain checks.
         """
-        for node in self.masters:
-            node.run(
-                args=[
-                    'sudo',
-                    '/opt/mesosphere/bin/dcos-check-runner',
-                    'check',
-                    'node-poststart',
-                    '||',
-                    'sudo',
-                    '/opt/mesosphere/bin/dcos-diagnostics',
-                    'check',
-                    'node-poststart',
-                    '||',
-                    '/opt/mesosphere/bin/3dt',
-                    '--diag',
-                ],
-                # Keep in mind this must be run as privileged user.
-                output=Output.LOG_AND_CAPTURE,
-                shell=True,
-            )
+
+        delay_seconds = 10
+
+        @retry(
+            exceptions=(subprocess.CalledProcessError),
+            delay=delay_seconds,
+            tries=int(timeout_seconds / delay_seconds),
+        )
+        def _wait_until_node_poststart_finish()
+            for node in self.masters:
+                node.run(
+                    args=[
+                        'sudo',
+                        '/opt/mesosphere/bin/dcos-check-runner',
+                        'check',
+                        'node-poststart',
+                        '||',
+                        'sudo',
+                        '/opt/mesosphere/bin/dcos-diagnostics',
+                        'check',
+                        'node-poststart',
+                        '||',
+                        '/opt/mesosphere/bin/3dt',
+                        '--diag',
+                    ],
+                    # Keep in mind this must be run as privileged user.
+                    output=Output.LOG_AND_CAPTURE,
+                    shell=True,
+                )
+
+        _wait_until_node_poststart_finish()
 
     def wait_for_dcos_oss(
         self,
@@ -318,86 +325,87 @@ class Cluster(ContextDecorator):
             dcos_e2e.exceptions.DCOSTimeoutError: Raised if cluster components
                 did not become ready within one hour.
         """
+        total_timeout_seconds = 60 * 60
 
-        @timeout_decorator.timeout(
-            # will almost certainly not start up after this time.
-            #
-            # In the future we may want to increase this or make it
-            # customizable.
-            60 * 60,
-            timeout_exception=DCOSTimeoutError,
+        start_time = time.monotonic()
+
+        current_time = time.monotonic()
+        seconds_since_start = current_time - start_time
+        remaining_time = total_timeout - seconds_since_start
+        self._wait_for_node_poststart(timeout_seconds=remaining_time)
+        if not http_checks:
+            return
+
+        # The dcos-diagnostics check is not yet sufficient to determine
+        # when a CLI login would be possible with Enterprise DC/OS. It only
+        # checks the healthy state of the systemd units, not reachability
+        # of services through HTTP.
+
+        # In the case of Enterprise DC/OS this method uses dcos-test-utils
+        # and superuser credentials to perform a superuser login that
+        # assure authenticating via CLI is working.
+
+        # Suggestion for replacing this with a DC/OS check for CLI login:
+
+        # In Enterprise DC/OS this could be replace by polling the login
+        # endpoint with random login credentials until it returns 401. In
+        # that case the guarantees would be the same as with the OSS
+        # suggestion.
+
+        # The progress on a partial replacement can be followed here:
+        # https://jira.mesosphere.com/browse/DCOS_OSS-1313
+
+        # In order to fully replace this method one would need to have
+        # DC/OS checks for every HTTP endpoint exposed by Admin Router.
+
+        credentials = {
+            'uid': superuser_username,
+            'password': superuser_password,
+        }
+
+        any_master = next(iter(self.masters))
+        config_result = any_master.run(
+            args=['cat', '/opt/mesosphere/etc/bootstrap-config.json'],
         )
-        def wait_for_dcos_ee_until_timeout() -> None:
-            """
-            Wait until DC/OS Enterprise is up or timeout hits.
-            """
+        config = json.loads(config_result.stdout.decode())
+        ssl_enabled = config['ssl_enabled']
 
-            self._wait_for_node_poststart()
-            if not http_checks:
-                return
+        scheme = 'https://' if ssl_enabled else 'http://'
+        dcos_url = scheme + str(any_master.public_ip_address)
+        enterprise_session = EnterpriseApiSession(  # type: ignore
+            dcos_url=dcos_url,
+            masters=[str(n.public_ip_address) for n in self.masters],
+            slaves=[str(n.public_ip_address) for n in self.agents],
+            public_slaves=[
+                str(n.public_ip_address) for n in self.public_agents
+            ],
+            auth_user=DcosUser(credentials=credentials),
+        )
 
-            # The dcos-diagnostics check is not yet sufficient to determine
-            # when a CLI login would be possible with Enterprise DC/OS. It only
-            # checks the healthy state of the systemd units, not reachability
-            # of services through HTTP.
+        if ssl_enabled:
 
-            # In the case of Enterprise DC/OS this method uses dcos-test-utils
-            # and superuser credentials to perform a superuser login that
-            # assure authenticating via CLI is working.
+            current_time = time.monotonic()
+            seconds_since_start = current_time - start_time
+            remaining_time = total_timeout - seconds_since_start
 
-            # Suggestion for replacing this with a DC/OS check for CLI login:
-
-            # In Enterprise DC/OS this could be replace by polling the login
-            # endpoint with random login credentials until it returns 401. In
-            # that case the guarantees would be the same as with the OSS
-            # suggestion.
-
-            # The progress on a partial replacement can be followed here:
-            # https://jira.mesosphere.com/browse/DCOS_OSS-1313
-
-            # In order to fully replace this method one would need to have
-            # DC/OS checks for every HTTP endpoint exposed by Admin Router.
-
-            credentials = {
-                'uid': superuser_username,
-                'password': superuser_password,
-            }
-
-            any_master = next(iter(self.masters))
-            config_result = any_master.run(
-                args=['cat', '/opt/mesosphere/etc/bootstrap-config.json'],
+            response = enterprise_session.get(
+                # Avoid hitting a RetryError in the get function.
+                # Waiting a year is considered equivalent to an
+                # infinite timeout.
+                '/ca/dcos-ca.crt',
+                retry_timeout=remaining_time,
+                verify=False,
             )
-            config = json.loads(config_result.stdout.decode())
-            ssl_enabled = config['ssl_enabled']
+            response.raise_for_status()
+            # This is already done in enterprise_session.wait_for_dcos()
+            enterprise_session.set_ca_cert()
 
-            scheme = 'https://' if ssl_enabled else 'http://'
-            dcos_url = scheme + str(any_master.public_ip_address)
-            enterprise_session = EnterpriseApiSession(  # type: ignore
-                dcos_url=dcos_url,
-                masters=[str(n.public_ip_address) for n in self.masters],
-                slaves=[str(n.public_ip_address) for n in self.agents],
-                public_slaves=[
-                    str(n.public_ip_address) for n in self.public_agents
-                ],
-                auth_user=DcosUser(credentials=credentials),
-            )
+        current_time = time.monotonic()
+        seconds_since_start = current_time - start_time
+        remaining_time = total_timeout - seconds_since_start
 
-            if ssl_enabled:
-                response = enterprise_session.get(
-                    # Avoid hitting a RetryError in the get function.
-                    # Waiting a year is considered equivalent to an
-                    # infinite timeout.
-                    '/ca/dcos-ca.crt',
-                    retry_timeout=60 * 60 * 24 * 365,
-                    verify=False,
-                )
-                response.raise_for_status()
-                # This is already done in enterprise_session.wait_for_dcos()
-                enterprise_session.set_ca_cert()
+        _test_utils_wait_for_dcos(session=enterprise_session, timeout=remaining_time)
 
-            _test_utils_wait_for_dcos(session=enterprise_session)
-
-        wait_for_dcos_ee_until_timeout()
 
     def __enter__(self) -> 'Cluster':
         """
