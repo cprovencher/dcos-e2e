@@ -2,6 +2,8 @@
 Tools for creating a DC/OS cluster.
 """
 
+from halo import Halo
+
 import tempfile
 import uuid
 from pathlib import Path
@@ -409,6 +411,8 @@ def create(
             \b
             If none of these are set, ``license_key_contents`` is not given.
     """  # noqa: E501
+    spinner = Halo(text='Loading', spinner='dots')
+    spinner.start()
     set_logging(verbosity_level=verbose)
     check_cluster_id_unique(
         new_cluster_id=cluster_id,
@@ -530,3 +534,4 @@ def create(
     )
 
     click.echo(cluster_id)
+    spinner.stop()

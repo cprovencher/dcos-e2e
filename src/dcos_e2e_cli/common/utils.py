@@ -90,11 +90,10 @@ def get_variant(
     if given_variant == 'auto':
         assert installer_path is not None
         try:
-            with click_spinner.spinner():
-                return get_dcos_installer_details(
-                    installer=installer_path,
-                    workspace_dir=workspace_dir,
-                ).variant
+            return get_dcos_installer_details(
+                installer=installer_path,
+                workspace_dir=workspace_dir,
+            ).variant
         except subprocess.CalledProcessError as exc:
             rmtree(path=str(workspace_dir), ignore_errors=True)
             click.echo(doctor_message)
