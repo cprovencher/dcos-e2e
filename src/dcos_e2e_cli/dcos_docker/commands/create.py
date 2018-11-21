@@ -2,6 +2,9 @@
 Tools for creating a DC/OS cluster.
 """
 
+# TODO when it succeeds, does it go to stdout / get captured?
+# TODO how does it interact with -v
+
 from halo import Halo
 
 import tempfile
@@ -411,8 +414,10 @@ def create(
             \b
             If none of these are set, ``license_key_contents`` is not given.
     """  # noqa: E501
-    spinner = Halo(text='Loading', spinner='dots')
-    spinner.start()
+    creating_spinner_text = 'Creating cluster configuration'
+    configuration_spinner = Halo(text=creating_spinner_text, spinner='dots')
+    configuration_spinner.start()
+
     set_logging(verbosity_level=verbose)
     check_cluster_id_unique(
         new_cluster_id=cluster_id,
@@ -479,6 +484,12 @@ def create(
         one_master_host_port_map=one_master_host_port_map,
     )
 
+    configuration_spinner.succeed(text='Configuration created')
+
+    creating_spinner_text = 'Creating cluster nodes'
+    create_nodes_spinner = Halo(text=creating_spinner_text, spinner='dots')
+    create_nodes_spinner.start()
+
     cluster = create_cluster(
         cluster_backend=cluster_backend,
         masters=masters,
@@ -498,6 +509,7 @@ def create(
                 remote_path=remote_path,
             )
 
+    create_nodes_spinner.succeed(text='Cluster nodes created')
     dcos_config = get_config(
         cluster=cluster,
         extra_config=extra_config,
@@ -505,6 +517,7 @@ def create(
         security_mode=security_mode,
         license_key=license_key,
     )
+
     install_dcos_from_path(
         cluster=cluster,
         dcos_config=dcos_config,
@@ -534,4 +547,3 @@ def create(
     )
 
     click.echo(cluster_id)
-    spinner.stop()

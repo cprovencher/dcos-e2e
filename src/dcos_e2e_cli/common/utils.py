@@ -11,10 +11,10 @@ from shutil import rmtree
 from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
 import click
-import click_spinner
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from halo import Halo
 
 from dcos_e2e.cluster import Cluster
 from dcos_e2e_cli._vendor.dcos_installer_tools import (
@@ -242,6 +242,10 @@ def install_dcos_from_path(
         sibling_ctx: A context associated with a call to a sibling of
             ``doctor_command``.
     """
+    creating_spinner_text = 'Installing DC/OS'
+    create_nodes_spinner = Halo(text=creating_spinner_text, spinner='dots')
+    create_nodes_spinner.start()
+
     doctor_path = command_path(
         sibling_ctx=sibling_ctx,
         command=doctor_command,
@@ -250,15 +254,15 @@ def install_dcos_from_path(
         doctor_path=doctor_path,
     )
     try:
-        with click_spinner.spinner():
-            cluster.install_dcos_from_path(
-                dcos_installer=installer,
-                dcos_config=dcos_config,
-                ip_detect_path=ip_detect_path,
-                files_to_copy_to_genconf_dir=files_to_copy_to_genconf_dir,
-            )
+        cluster.install_dcos_from_path(
+            dcos_installer=installer,
+            dcos_config=dcos_config,
+            ip_detect_path=ip_detect_path,
+            files_to_copy_to_genconf_dir=files_to_copy_to_genconf_dir,
+        )
     except subprocess.CalledProcessError as exc:
         click.echo('Error installing DC/OS.', err=True)
         click.echo(doctor_message)
         cluster.destroy()
         sys.exit(exc.returncode)
+    create_nodes_spinner.succeed('DC/OS installed')

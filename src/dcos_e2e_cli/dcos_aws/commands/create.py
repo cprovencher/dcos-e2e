@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import boto3
 import click
-import click_spinner
 
 from dcos_e2e.backends import AWS
 from dcos_e2e.distributions import Distribution
@@ -305,13 +304,12 @@ def create(
     )
 
     try:
-        with click_spinner.spinner():
-            cluster.install_dcos_from_url(
-                dcos_installer=installer_url,
-                dcos_config=dcos_config,
-                ip_detect_path=cluster_backend.ip_detect_path,
-                files_to_copy_to_genconf_dir=files_to_copy_to_genconf_dir,
-            )
+        cluster.install_dcos_from_url(
+            dcos_installer=installer_url,
+            dcos_config=dcos_config,
+            ip_detect_path=cluster_backend.ip_detect_path,
+            files_to_copy_to_genconf_dir=files_to_copy_to_genconf_dir,
+        )
     except CalledProcessError as exc:
         click.echo('Error installing DC/OS.', err=True)
         click.echo(doctor_message)
