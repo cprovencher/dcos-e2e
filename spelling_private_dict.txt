@@ -24,6 +24,7 @@ cli
 completedprocess
 conf
 config
+conftest
 customizable
 cwd
 dangoor
@@ -35,7 +36,6 @@ diff
 dir
 dockerfile
 drf
-miniDC
 dulwich
 enum
 env
@@ -45,7 +45,6 @@ filename
 func
 genconf
 gzip
-minidc
 homebrew
 hwclock
 idna
@@ -68,6 +67,8 @@ macOS
 macos
 makefile
 mesos
+miniDC
+minidc
 minidcos
 mkstemp
 modprobe
@@ -122,6 +123,7 @@ symlink
 systemctl
 systemd
 tarfile
+tarstream
 tempfile
 tmp
 tmpfs
@@ -140,6 +142,7 @@ uninstalling
 untar
 url
 username
+util
 utils
 vagrantfile
 validator

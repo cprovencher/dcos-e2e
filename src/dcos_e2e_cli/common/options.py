@@ -9,7 +9,11 @@ from typing import Any, Callable, Dict, Optional, Union
 import click
 import yaml
 
-from .validators import validate_path_is_directory, validate_path_pair
+from .validators import (
+    validate_path_is_directory,
+    validate_path_pair,
+    validate_paths_are_directories,
+)
 
 
 def _validate_cluster_id(
@@ -337,12 +341,18 @@ def sync_dir_run_option(command: Callable[..., None]) -> Callable[..., None]:
     function = click.option(
         '--sync-dir',
         type=click.Path(exists=True),
+        multiple=True,
         help=(
             'The path to a DC/OS checkout. '
             'Part of this checkout will be synced to all master nodes before '
-            'the command is run.'
+            'the command is run. '
+            'The bootstrap directory is synced if the checkout directory '
+            'variant matches the cluster variant.'
+            'Integration tests are also synced.'
+            'Use this option multiple times on a DC/OS Enterprise cluster to '
+            'sync both DC/OS Enterprise and DC/OS Open Source tests.'
         ),
-        callback=validate_path_is_directory,
+        callback=validate_paths_are_directories,
     )(command)  # type: Callable[..., None]
     return function
 

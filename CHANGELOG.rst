@@ -6,7 +6,17 @@ Changelog
 Next
 ----
 
+2018.11.20.1
+------------
+
+- Allow multiple ``--sync-dir`` options to be given to ``run`` commands.
+
+2018.11.20.0
+------------
+
 - Rename ``build_artifact`` and related variables to "installer".
+- If syncing a DC/OS OSS repository to a DC/OS Enterprise cluster, only Open
+  Source tests are synced.
 
 2018.11.16.2
 ------------
